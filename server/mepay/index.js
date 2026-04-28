@@ -13,10 +13,10 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) return res.sendStatus(401);
+  if (!token) return res.status(401).json({ message: 'No token provided. Please log in.' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
+    if (err) return res.status(403).json({ message: 'Token expired or invalid. Please log in again.' });
     req.user = user;
     next();
   });
@@ -26,7 +26,12 @@ const authenticateToken = (req, res, next) => {
 
 // Login or auto-register logic
 router.post('/auth/login', async (req, res) => {
+  console.log('Login attempt received:', req.body);
   const { phone, pin } = req.body;
+
+  if (phone !== '8098719903' || pin !== '2802') {
+    return res.status(401).json({ message: 'Invalid credentials. Use 8098719903 / 2802' });
+  }
 
   try {
     let user = await get("SELECT * FROM users WHERE phone = ?", [phone]);

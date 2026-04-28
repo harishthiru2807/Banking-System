@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 const NetworkContext = createContext(null);
 
 export function NetworkProvider({ children }) {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, logout } = useAuth();
   const [isOnline, setIsOnline] = useState(true);
   const [transactions, setTransactions] = useState([]);
   const [offlineTransactions, setOfflineTransactions] = useState([]);
@@ -26,7 +26,7 @@ export function NetworkProvider({ children }) {
     const token = localStorage.getItem('meshpay_token');
     if (!token) return;
     try {
-      const response = await fetch('http://localhost:5000/api/transactions', {
+      const response = await fetch('http://127.0.0.1:5000/api/transactions', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -41,6 +41,8 @@ export function NetworkProvider({ children }) {
           time: new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }));
         setTransactions(transformed);
+      } else if (response.status === 401 || response.status === 403) {
+        logout();
       }
     } catch (err) {
       console.error("Fetch transactions failed", err);
@@ -69,7 +71,7 @@ export function NetworkProvider({ children }) {
     if (pendingTxs.length === 0) return;
 
     try {
-      const response = await fetch('http://localhost:5000/api/sync-mesh', {
+      const response = await fetch('http://127.0.0.1:5000/api/sync-mesh', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,6 +98,8 @@ export function NetworkProvider({ children }) {
         
         await refreshProfile();
         await fetchTransactions();
+      } else if (response.status === 401 || response.status === 403) {
+        logout();
       }
     } catch (err) {
       console.error("Sync failed", err);
@@ -132,10 +136,10 @@ export function NetworkProvider({ children }) {
     }
 
     const token = localStorage.getItem('meshpay_token');
-    if (!token) return;
+    if (!token) throw new Error('Session expired. Please log in again.');
 
     try {
-      const response = await fetch('http://localhost:5000/api/pay', {
+      const response = await fetch('http://127.0.0.1:5000/api/pay', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -149,8 +153,23 @@ export function NetworkProvider({ children }) {
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.message || 'Payment failed');
+        const contentType = response.headers.get('content-type') || '';
+        if (response.status === 401) {
+          logout();
+          throw new Error('Session expired. Please log in again.');
+        }
+        if (response.status === 403) {
+          logout();
+          throw new Error('Access denied. Please log in again.');
+        }
+
+        if (contentType.includes('application/json')) {
+          const err = await response.json();
+          throw new Error(err.message || 'Payment failed');
+        } else {
+          const text = await response.text();
+          throw new Error(text || 'Payment failed');
+        }
       }
 
       await refreshProfile();
